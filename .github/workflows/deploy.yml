@@ -1,0 +1,132 @@
+name: 🚀 Deploy to AWS
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: eu-west-1
+  STACK_NAME: task-manager-prod
+
+jobs:
+  # ========================================
+  # Test & Validate
+  # ========================================
+  test:
+    name: 🧪 Test & Validate
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: 📦 Install dependencies
+      run: |
+        pip install -r app/requirements.txt
+        pip install pytest flake8
+    
+    - name: 🔍 Lint code
+      run: flake8 app/ --max-line-length=127
+    
+    - name: 🧪 Run tests
+      run: |
+        cd app
+        python -m pytest tests/ -v
+    
+    - name: ⚙️ Configure AWS
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: 🔍 Validate CloudFormation
+      run: |
+        aws cloudformation validate-template \
+          --template-body file://infrastructure/final-working.yaml
+
+  # ========================================
+  # Deploy to AWS
+  # ========================================
+  deploy:
+    name: 🚀 Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: ⚙️ Configure AWS
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: 🔑 Create Key Pair
+      run: |
+        if ! aws ec2 describe-key-pairs --key-names ${{ env.STACK_NAME }}-keypair >/dev/null 2>&1; then
+          aws ec2 create-key-pair \
+            --key-name ${{ env.STACK_NAME }}-keypair \
+            --query 'KeyMaterial' \
+            --output text > keypair.pem
+        fi
+    
+    - name: 🏗️ Deploy CloudFormation
+      run: |
+        if aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} >/dev/null 2>&1; then
+          ACTION="update-stack"
+          WAIT_CONDITION="stack-update-complete"
+        else
+          ACTION="create-stack"
+          WAIT_CONDITION="stack-create-complete"
+        fi
+        
+        aws cloudformation $ACTION \
+          --stack-name ${{ env.STACK_NAME }} \
+          --template-body file://infrastructure/final-working.yaml \
+          --parameters ParameterKey=KeyPairName,ParameterValue=${{ env.STACK_NAME }}-keypair \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --tags Key=Environment,Value=production Key=ManagedBy,Value=GitHub-Actions
+        
+        aws cloudformation wait $WAIT_CONDITION --stack-name ${{ env.STACK_NAME }}
+    
+    - name: 📊 Get Application URL
+      id: get-url
+      run: |
+        APP_URL=$(aws cloudformation describe-stacks \
+          --stack-name ${{ env.STACK_NAME }} \
+          --query 'Stacks[0].Outputs[?OutputKey==`ApplicationURL`].OutputValue' \
+          --output text)
+        echo "app-url=$APP_URL" >> $GITHUB_OUTPUT
+        echo "🚀 Application deployed at: $APP_URL"
+    
+    - name: 🏥 Health Check
+      run: |
+        APP_URL="${{ steps.get-url.outputs.app-url }}"
+        
+        for i in {1..20}; do
+          if curl -f -s "$APP_URL/health" > /dev/null; then
+            echo "✅ Application is healthy!"
+            break
+          fi
+          echo "⏳ Waiting for application... ($i/20)"
+          sleep 15
+        done
+        
+        curl -f "$APP_URL/health" || exit 1
+    
+    - name: 📢 Deployment Summary
+      run: |
+        echo "## 🚀 Deployment Successful" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: Production" >> $GITHUB_STEP_SUMMARY
+        echo "- **Stack**: ${{ env.STACK_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Region**: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **URL**: ${{ steps.get-url.outputs.app-url }}" >> $GITHUB_STEP_SUMMARY

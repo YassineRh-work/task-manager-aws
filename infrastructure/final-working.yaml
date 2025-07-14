@@ -1,0 +1,231 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Final Working Free Tier - Simplified IAM'
+
+Parameters:
+  KeyPairName:
+    Type: String
+    Default: free-keypair
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: final-working-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: final-working-igw
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: final-working-subnet
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: final-working-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref RouteTable
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Final Working Security Group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: final-working-sg
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub final-working-${AWS::AccountId}-${AWS::Region}
+      Tags:
+        - Key: Name
+          Value: final-working-s3
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AWSLambdaExecute
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: final-working-notifications
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          from datetime import datetime
+          def lambda_handler(event, context):
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'Final Working Lambda Success!',
+                      'timestamp': datetime.now().isoformat(),
+                      'cost': '0€'
+                  })
+              }
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2}}'
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      IamInstanceProfile: !Ref InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y python3 python3-pip
+          pip3 install flask boto3
+          
+          mkdir -p /opt/app
+          cd /opt/app
+          
+          cat > app.py << 'PYEOF'
+          from flask import Flask, jsonify
+          import boto3
+          import json
+          from datetime import datetime
+          
+          app = Flask(__name__)
+          
+          @app.route('/')
+          def home():
+              return jsonify({
+                  'message': 'Final Working Free Tier Task Manager',
+                  'status': 'SUCCESS',
+                  'cost': '0€/month',
+                  'timestamp': datetime.now().isoformat()
+              })
+          
+          @app.route('/health')
+          def health():
+              return jsonify({'status': 'healthy', 'cost': '0€'})
+          
+          @app.route('/test-lambda')
+          def test_lambda():
+              try:
+                  lambda_client = boto3.client('lambda')
+                  response = lambda_client.invoke(
+                      FunctionName='final-working-notifications',
+                      InvocationType='RequestResponse',
+                      Payload=json.dumps({'test': 'from EC2'})
+                  )
+                  result = json.loads(response['Payload'].read())
+                  return jsonify({'lambda_test': 'SUCCESS', 'response': result})
+              except Exception as e:
+                  return jsonify({'lambda_test': 'ERROR', 'error': str(e)})
+          
+          @app.route('/test-s3')
+          def test_s3():
+              try:
+                  s3 = boto3.client('s3')
+                  bucket_name = '${S3Bucket}'
+                  s3.put_object(Bucket=bucket_name, Key='test.txt', Body='Success!')
+                  return jsonify({'s3_test': 'SUCCESS', 'bucket': bucket_name})
+              except Exception as e:
+                  return jsonify({'s3_test': 'ERROR', 'error': str(e)})
+          
+          if __name__ == '__main__':
+              app.run(host='0.0.0.0', port=5000)
+          PYEOF
+          
+          python3 app.py &
+      Tags:
+        - Key: Name
+          Value: final-working-instance
+
+Outputs:
+  ApplicationURL:
+    Description: Final Working Application URL
+    Value: !Sub http://${EC2Instance.PublicIp}:5000
+
+  InstanceIP:
+    Description: EC2 Instance IP
+    Value: !GetAtt EC2Instance.PublicIp
+
+  S3Bucket:
+    Description: S3 Bucket Name
+    Value: !Ref S3Bucket
