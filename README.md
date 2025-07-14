@@ -109,7 +109,7 @@ PUT  /api/tasks/{id}  # Update task
 - **Lambda notifications** on task events
 - **CloudWatch monitoring** and health checks
 
-## 🎯 For Interviews
+## 🎯 Key Points
 
 **Key Technical Points:**
 1. **Infrastructure as Code** - Complete AWS stack in CloudFormation
@@ -133,10 +133,8 @@ PUT  /api/tasks/{id}  # Update task
 
 ## 📞 Contact
 
-**[Your Name]** - [your.email@example.com]
+**[Yassine Rhourri]** - [yassinerhourri@gmail.com]
 
-Project: [https://github.com/your-username/task-manager-aws]
+Project: [https://github.com/YassineRh-work/task-manager-aws]
 
 ---
-
-⭐ **Built with AWS Free Tier - Zero monthly cost for 12 months**
