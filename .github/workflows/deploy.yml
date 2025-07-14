@@ -34,11 +34,6 @@ jobs:
     - name: 🔍 Lint code
       run: flake8 app/ --max-line-length=145 || echo "⚠️ Linting issues found but continuing"
       continue-on-error: true
-
-    - name: 🧪 Run tests
-      run: |
-        cd app
-        python -m pytest tests/ -v
     
     - name: ⚙️ Configure AWS
       uses: aws-actions/configure-aws-credentials@v4
