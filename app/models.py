@@ -26,11 +26,11 @@ class Task(db.Model):
             'completed': self.completed,
             'priority': self.priority,
             'created_at': (self.created_at.isoformat()
-                          if self.created_at else None),
+                           if self.created_at else None),
             'updated_at': (self.updated_at.isoformat()
-                          if self.updated_at else None),
+                           if self.updated_at else None),
             'due_date': (self.due_date.isoformat()
-                        if self.due_date else None)
+                         if self.due_date else None)
         }
 
     def __repr__(self):
@@ -51,8 +51,9 @@ class User(db.Model):
             'username': self.username,
             'email': self.email,
             'created_at': (self.created_at.isoformat()
-                          if self.created_at else None)
+                           if self.created_at else None)
         }
 
     def __repr__(self):
         return f'<User {self.username}>'
+    

@@ -6,9 +6,9 @@ load_dotenv()
 
 class Config:
     """Configuration de base pour l'application."""
-    
+
     # Configuration de base
-    SECRET_KEY = (os.environ.get('SECRET_KEY') or 
+    SECRET_KEY = (os.environ.get('SECRET_KEY') or
                   'dev-secret-key-change-in-production')
 
     # Configuration base de données
@@ -20,15 +20,17 @@ class Config:
 
     # URL de connexion PostgreSQL
     SQLALCHEMY_DATABASE_URI = (
-        f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+        f'postgresql://{DB_USER}:{DB_PASSWORD}@'
+        f'{DB_HOST}:{DB_PORT}/{DB_NAME}'
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Configuration AWS
     AWS_REGION = os.environ.get('AWS_REGION') or 'eu-west-1'
-    S3_BUCKET = (os.environ.get('S3_BUCKET') or 
+    S3_BUCKET = (os.environ.get('S3_BUCKET') or
                  'taskmanager-static-assets')
 
     # Configuration de l'environnement
     ENVIRONMENT = os.environ.get('ENVIRONMENT') or 'dev'
     DEBUG = ENVIRONMENT == 'dev'
+    
